@@ -1,0 +1,81 @@
+{
+  "format": "packetlab/project",
+  "version": 1,
+  "devices": [
+    {
+      "id": 1,
+      "type": "pc",
+      "name": "PC-1",
+      "x": 120,
+      "y": 100,
+      "ipAddress": "192.168.10.10",
+      "subnetMask": "255.255.255.0",
+      "defaultGateway": "192.168.10.1",
+      "interfaces": [
+        {
+          "name": "eth0",
+          "ipAddress": "192.168.10.10",
+          "subnetMask": "255.255.255.0"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "switch",
+      "name": "SW-2",
+      "x": 300,
+      "y": 120,
+      "ipAddress": "",
+      "subnetMask": "255.255.255.0",
+      "defaultGateway": "",
+      "interfaces": [
+        { "name": "fa0/1", "ipAddress": "", "subnetMask": "255.255.255.0" },
+        { "name": "fa0/2", "ipAddress": "", "subnetMask": "255.255.255.0" },
+        { "name": "fa0/3", "ipAddress": "", "subnetMask": "255.255.255.0" },
+        { "name": "fa0/4", "ipAddress": "", "subnetMask": "255.255.255.0" },
+        { "name": "fa0/5", "ipAddress": "", "subnetMask": "255.255.255.0" },
+        { "name": "fa0/6", "ipAddress": "", "subnetMask": "255.255.255.0" },
+        { "name": "fa0/7", "ipAddress": "", "subnetMask": "255.255.255.0" },
+        { "name": "fa0/8", "ipAddress": "", "subnetMask": "255.255.255.0" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "router",
+      "name": "R-3",
+      "x": 480,
+      "y": 80,
+      "ipAddress": "192.168.10.1",
+      "subnetMask": "255.255.255.0",
+      "defaultGateway": "",
+      "interfaces": [
+        {
+          "name": "g0/0",
+          "ipAddress": "192.168.10.1",
+          "subnetMask": "255.255.255.0"
+        },
+        {
+          "name": "g0/1",
+          "ipAddress": "",
+          "subnetMask": "255.255.255.0"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "id": 1,
+      "leftDeviceId": 1,
+      "leftInterfaceIndex": 0,
+      "rightDeviceId": 2
+      ,"rightInterfaceIndex": 0
+    },
+    {
+      "id": 2,
+      "leftDeviceId": 2,
+      "leftInterfaceIndex": 1,
+      "rightDeviceId": 3
+      ,"rightInterfaceIndex": 0
+    }
+  ]
+}
