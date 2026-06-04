@@ -3,79 +3,100 @@
   "version": 1,
   "devices": [
     {
-      "id": 1,
-      "type": "pc",
-      "name": "PC-1",
-      "x": 120,
-      "y": 100,
-      "ipAddress": "192.168.10.10",
-      "subnetMask": "255.255.255.0",
-      "defaultGateway": "192.168.10.1",
+      "id": 1, "type": "pc", "name": "PC-1",
+      "x": 120, "y": 100,
+      "ipAddress": "192.168.1.10", "subnetMask": "255.255.255.0",
+      "defaultGateway": "192.168.1.1",
       "interfaces": [
-        {
-          "name": "eth0",
-          "ipAddress": "192.168.10.10",
-          "subnetMask": "255.255.255.0"
-        }
+        {"name": "eth0", "ipAddress": "192.168.1.10", "subnetMask": "255.255.255.0"}
+      ],
+      "routingTable": []
+    },
+    {
+      "id": 2, "type": "switch", "name": "SW-2",
+      "x": 340, "y": 100,
+      "ipAddress": "", "subnetMask": "255.255.255.0", "defaultGateway": "",
+      "interfaces": [
+        {"name":"fa0/1","ipAddress":"","subnetMask":"255.255.255.0"},
+        {"name":"fa0/2","ipAddress":"","subnetMask":"255.255.255.0"},
+        {"name":"fa0/3","ipAddress":"","subnetMask":"255.255.255.0"},
+        {"name":"fa0/4","ipAddress":"","subnetMask":"255.255.255.0"},
+        {"name":"fa0/5","ipAddress":"","subnetMask":"255.255.255.0"},
+        {"name":"fa0/6","ipAddress":"","subnetMask":"255.255.255.0"},
+        {"name":"fa0/7","ipAddress":"","subnetMask":"255.255.255.0"},
+        {"name":"fa0/8","ipAddress":"","subnetMask":"255.255.255.0"}
+      ],
+      "routingTable": []
+    },
+    {
+      "id": 3, "type": "router", "name": "R-3",
+      "x": 560, "y": 80,
+      "ipAddress": "192.168.1.1", "subnetMask": "255.255.255.0", "defaultGateway": "",
+      "interfaces": [
+        {"name": "g0/0", "ipAddress": "192.168.1.1", "subnetMask": "255.255.255.0"},
+        {"name": "g0/1", "ipAddress": "10.0.0.1",    "subnetMask": "255.255.255.0"},
+        {"name": "g0/2", "ipAddress": "", "subnetMask": "255.255.255.0"},
+        {"name": "g0/3", "ipAddress": "", "subnetMask": "255.255.255.0"}
+      ],
+      "routingTable": [
+        {"destination": "192.168.1.0", "mask": "255.255.255.0", "nextHop": "192.168.1.1", "metric": 0},
+        {"destination": "10.0.0.0",    "mask": "255.255.255.0", "nextHop": "10.0.0.1",    "metric": 0}
       ]
     },
     {
-      "id": 2,
-      "type": "switch",
-      "name": "SW-2",
-      "x": 300,
-      "y": 120,
-      "ipAddress": "",
-      "subnetMask": "255.255.255.0",
-      "defaultGateway": "",
+      "id": 4, "type": "switch", "name": "SW-4",
+      "x": 780, "y": 100,
+      "ipAddress": "", "subnetMask": "255.255.255.0", "defaultGateway": "",
       "interfaces": [
-        { "name": "fa0/1", "ipAddress": "", "subnetMask": "255.255.255.0" },
-        { "name": "fa0/2", "ipAddress": "", "subnetMask": "255.255.255.0" },
-        { "name": "fa0/3", "ipAddress": "", "subnetMask": "255.255.255.0" },
-        { "name": "fa0/4", "ipAddress": "", "subnetMask": "255.255.255.0" },
-        { "name": "fa0/5", "ipAddress": "", "subnetMask": "255.255.255.0" },
-        { "name": "fa0/6", "ipAddress": "", "subnetMask": "255.255.255.0" },
-        { "name": "fa0/7", "ipAddress": "", "subnetMask": "255.255.255.0" },
-        { "name": "fa0/8", "ipAddress": "", "subnetMask": "255.255.255.0" }
-      ]
+        {"name":"fa0/1","ipAddress":"","subnetMask":"255.255.255.0"},
+        {"name":"fa0/2","ipAddress":"","subnetMask":"255.255.255.0"},
+        {"name":"fa0/3","ipAddress":"","subnetMask":"255.255.255.0"},
+        {"name":"fa0/4","ipAddress":"","subnetMask":"255.255.255.0"},
+        {"name":"fa0/5","ipAddress":"","subnetMask":"255.255.255.0"},
+        {"name":"fa0/6","ipAddress":"","subnetMask":"255.255.255.0"},
+        {"name":"fa0/7","ipAddress":"","subnetMask":"255.255.255.0"},
+        {"name":"fa0/8","ipAddress":"","subnetMask":"255.255.255.0"}
+      ],
+      "routingTable": []
     },
     {
-      "id": 3,
-      "type": "router",
-      "name": "R-3",
-      "x": 480,
-      "y": 80,
-      "ipAddress": "192.168.10.1",
-      "subnetMask": "255.255.255.0",
-      "defaultGateway": "",
+      "id": 5, "type": "server", "name": "Server-5",
+      "x": 1000, "y": 80,
+      "ipAddress": "10.0.0.10", "subnetMask": "255.255.255.0",
+      "defaultGateway": "10.0.0.1",
       "interfaces": [
-        {
-          "name": "g0/0",
-          "ipAddress": "192.168.10.1",
-          "subnetMask": "255.255.255.0"
-        },
-        {
-          "name": "g0/1",
-          "ipAddress": "",
-          "subnetMask": "255.255.255.0"
-        }
-      ]
+        {"name": "eth0", "ipAddress": "10.0.0.10", "subnetMask": "255.255.255.0"},
+        {"name": "eth1", "ipAddress": "", "subnetMask": "255.255.255.0"}
+      ],
+      "routingTable": []
+    },
+    {
+      "id": 6, "type": "ipphone", "name": "Phone-6",
+      "x": 120, "y": 300,
+      "ipAddress": "192.168.1.20", "subnetMask": "255.255.255.0",
+      "defaultGateway": "192.168.1.1",
+      "interfaces": [
+        {"name": "eth0", "ipAddress": "192.168.1.20", "subnetMask": "255.255.255.0"}
+      ],
+      "routingTable": []
+    },
+    {
+      "id": 7, "type": "ipcamera", "name": "Cam-7",
+      "x": 1000, "y": 300,
+      "ipAddress": "10.0.0.20", "subnetMask": "255.255.255.0",
+      "defaultGateway": "10.0.0.1",
+      "interfaces": [
+        {"name": "eth0", "ipAddress": "10.0.0.20", "subnetMask": "255.255.255.0"}
+      ],
+      "routingTable": []
     }
   ],
   "links": [
-    {
-      "id": 1,
-      "leftDeviceId": 1,
-      "leftInterfaceIndex": 0,
-      "rightDeviceId": 2
-      ,"rightInterfaceIndex": 0
-    },
-    {
-      "id": 2,
-      "leftDeviceId": 2,
-      "leftInterfaceIndex": 1,
-      "rightDeviceId": 3
-      ,"rightInterfaceIndex": 0
-    }
+    {"id": 1, "leftDeviceId": 1, "leftInterfaceIndex": 0, "rightDeviceId": 2, "rightInterfaceIndex": 0},
+    {"id": 2, "leftDeviceId": 6, "leftInterfaceIndex": 0, "rightDeviceId": 2, "rightInterfaceIndex": 1},
+    {"id": 3, "leftDeviceId": 2, "leftInterfaceIndex": 2, "rightDeviceId": 3, "rightInterfaceIndex": 0},
+    {"id": 4, "leftDeviceId": 3, "leftInterfaceIndex": 1, "rightDeviceId": 4, "rightInterfaceIndex": 0},
+    {"id": 5, "leftDeviceId": 5, "leftInterfaceIndex": 0, "rightDeviceId": 4, "rightInterfaceIndex": 1},
+    {"id": 7, "leftDeviceId": 7, "leftInterfaceIndex": 0, "rightDeviceId": 4, "rightInterfaceIndex": 2}
   ]
 }

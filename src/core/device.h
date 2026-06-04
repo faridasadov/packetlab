@@ -1,23 +1,26 @@
 #pragma once
-
 #include <QPointF>
 #include <QString>
 #include <vector>
-
 #include "networkinterface.h"
 
 namespace packetlab {
 
 enum class DeviceType {
-    Pc,
-    Switch,
-    Router
+    Pc, Laptop, Server, IpPhone, IpCamera, WirelessAp,
+    Switch, SwitchL3, Router, Firewall
+};
+
+struct RouteEntry {
+    QString destination;
+    QString mask;
+    QString nextHop;
+    int metric = 1;
 };
 
 class Device {
 public:
     Device(int id, DeviceType type, QString name);
-
     int id() const;
     DeviceType type() const;
     const QString& name() const;
@@ -34,9 +37,11 @@ public:
     std::vector<NetworkInterface>& interfaces();
     NetworkInterface* interfaceAt(int index);
     const NetworkInterface* interfaceAt(int index) const;
-
+    const std::vector<RouteEntry>& routingTable() const;
+    std::vector<RouteEntry>& routingTable();
+    bool isL3Capable() const;
     QString typeLabel() const;
-
+    QString typeId() const;
 private:
     int m_id;
     DeviceType m_type;
@@ -46,6 +51,7 @@ private:
     QString m_subnetMask;
     QString m_defaultGateway;
     std::vector<NetworkInterface> m_interfaces;
+    std::vector<RouteEntry> m_routingTable;
 };
 
-}  // namespace packetlab
+} // namespace packetlab

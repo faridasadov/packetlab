@@ -21,6 +21,8 @@ set(PACKETLAB_SOURCES
     src/app/main.cpp
     src/app/mainwindow.cpp
     src/app/mainwindow.h
+    src/app/simulationdialog.cpp
+    src/app/simulationdialog.h
     src/app/topologyscene.cpp
     src/app/topologyscene.h
     src/core/device.cpp

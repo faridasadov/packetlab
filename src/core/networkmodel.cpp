@@ -129,13 +129,27 @@ QPointF NetworkModel::nextPosition(DeviceType type) const {
     switch (type) {
     case DeviceType::Pc:
         return QPointF(x, y);
+    case DeviceType::Laptop:
+        return QPointF(x, y);
+    case DeviceType::Server:
+        return QPointF(x, y - 20.0);
+    case DeviceType::IpPhone:
+        return QPointF(x, y);
+    case DeviceType::IpCamera:
+        return QPointF(x, y);
+    case DeviceType::WirelessAp:
+        return QPointF(x, y - 10.0);
     case DeviceType::Switch:
+        return QPointF(x, y + 20.0);
+    case DeviceType::SwitchL3:
         return QPointF(x, y + 20.0);
     case DeviceType::Router:
         return QPointF(x, y - 20.0);
+    case DeviceType::Firewall:
+        return QPointF(x, y - 20.0);
+    default:
+        return QPointF(x, y);
     }
-
-    return QPointF(x, y);
 }
 
 }  // namespace packetlab
