@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 
+#include "deviceconsoledialog.h"
 #include "simulationdialog.h"
 #include "topologyscene.h"
 
@@ -25,12 +26,14 @@
 #include <QSignalBlocker>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QStyle>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTextEdit>
 #include <QTime>
 #include <QToolBar>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QLineEdit>
@@ -40,15 +43,71 @@
 
 namespace packetlab {
 
+namespace {
+
+struct LabPresetDefinition {
+    QString id;
+    QString title;
+    QString category;
+    QString summary;
+    QString focus;
+    QString configHints;
+};
+
+const std::vector<LabPresetDefinition>& labPresets() {
+    static const std::vector<LabPresetDefinition> presets = {
+        {"static-routing", "Static Routing Starter", "Routing",
+         "Two routers, two LANs and a transit link. Good baseline for gateway and route validation.",
+         "Static routes, gateway mapping, /24 LANs, /30 point-to-point link.",
+         "conf t\nip route 192.168.20.0 255.255.255.0 10.0.0.2\nip route 192.168.10.0 255.255.255.0 10.0.0.1"},
+        {"ospf-area0", "OSPF Area 0 Lab", "Dynamic Routing",
+         "Three routers in a line with edge PCs. Mirrors common CCNA OSPF practice topologies.",
+         "OSPF adjacency, interface addressing, area 0 planning.",
+         "router ospf 1\n network 10.0.0.0 0.0.0.255 area 0\n network 192.168.10.0 0.0.0.255 area 0"},
+        {"vlan-roas", "VLAN + Router-on-a-Stick", "Switching",
+         "Access switch, trunk uplink and inter-VLAN routing starter with two user VLANs.",
+         "VLAN IDs, trunking, subinterfaces, gateway per VLAN.",
+         "vlan 10\nvlan 20\ninterface g0/0.10\n encapsulation dot1Q 10\n ip address 192.168.10.1 255.255.255.0"},
+        {"acl-policy", "ACL Policy Check", "Security",
+         "Edge router and server segment to test permit/deny flows and diagnostics.",
+         "Extended ACL thinking, server reachability, subnet scoping.",
+         "access-list 101 permit tcp 192.168.10.0 0.0.0.255 host 192.168.30.10 eq 80\naccess-list 101 deny ip any any"},
+        {"wireless-lan", "Wireless LAN Starter", "Wireless",
+         "Access point, laptop and wired backbone starter layout for SSID and gateway checks.",
+         "SSID planning, AP uplink, wired/wireless host addressing.",
+         "ssid CampusWiFi\nwpa2-psk <key>\ninterface wlan0\n ip address dhcp"},
+        {"campus-core", "Campus Core with L3 Switch", "Enterprise",
+         "L3 switch core with access switch and firewall edge, useful for segmentation drills.",
+         "SVI gateways, core-edge split, firewall handoff.",
+         "interface vlan 10\n ip address 10.10.10.1 255.255.255.0\nip routing"},
+    };
+    return presets;
+}
+
+const LabPresetDefinition* findLabPreset(const QString& presetId) {
+    for (const auto& preset : labPresets()) {
+        if (preset.id == presetId) {
+            return &preset;
+        }
+    }
+    return nullptr;
+}
+
+} // namespace
+
 MainWindow::MainWindow()
     : m_simulator(m_model),
       m_selectedLinkId(-1),
       m_restoringHistory(false),
       m_deviceList(new QListWidget(this)),
+      m_labList(new QListWidget(this)),
       m_topologyView(new QGraphicsView(this)),
       m_topologyScene(new TopologyScene(this)),
       m_logView(new QTextEdit(this)),
+      m_labDetailsView(new QTextEdit(this)),
+      m_cliReferenceView(new QTextEdit(this)),
       m_deviceDetails(new QLabel(this)),
+      m_featureCoverageLabel(new QLabel(this)),
       m_deviceSummary(nullptr),
       m_nameEdit(new QLineEdit(this)),
       m_ipEdit(new QLineEdit(this)),
@@ -68,7 +127,8 @@ MainWindow::MainWindow()
       m_routeTable(new QTableWidget(0, 4, this)),
       m_routeCard(nullptr),
       m_undoAction(nullptr),
-      m_redoAction(nullptr) {
+      m_redoAction(nullptr),
+      m_applyLabButton(nullptr) {
     // m_pingTargetEdit is the same widget as m_testTargetEdit
     m_pingTargetEdit = m_testTargetEdit;
 
@@ -81,27 +141,27 @@ MainWindow::MainWindow()
     // ── Toolbar ──────────────────────────────────────────────────────────────
     auto* toolbar = addToolBar("Devices");
     toolbar->setObjectName("topToolbar");
-    m_undoAction = toolbar->addAction("Undo", this, &MainWindow::undo);
-    m_redoAction = toolbar->addAction("Redo", this, &MainWindow::redo);
+    m_undoAction = toolbar->addAction(style()->standardIcon(QStyle::SP_ArrowBack), "Undo", this, &MainWindow::undo);
+    m_redoAction = toolbar->addAction(style()->standardIcon(QStyle::SP_ArrowForward), "Redo", this, &MainWindow::redo);
     toolbar->addSeparator();
-    toolbar->addAction("Open",   this, &MainWindow::loadProject);
-    toolbar->addAction("Save",   this, &MainWindow::saveProject);
-    toolbar->addAction("Demo",   this, &MainWindow::loadDemoProject);
-    toolbar->addAction("✕ Delete", this, &MainWindow::deleteSelection);
+    toolbar->addAction(style()->standardIcon(QStyle::SP_DialogOpenButton), "Open", this, &MainWindow::loadProject);
+    toolbar->addAction(style()->standardIcon(QStyle::SP_DialogSaveButton), "Save", this, &MainWindow::saveProject);
+    toolbar->addAction(style()->standardIcon(QStyle::SP_FileDialogDetailedView), "Demo", this, &MainWindow::loadDemoProject);
+    toolbar->addAction(style()->standardIcon(QStyle::SP_TrashIcon), "Delete", this, &MainWindow::deleteSelection);
     toolbar->addSeparator();
-    toolbar->addAction("⊕ PC",     this, &MainWindow::addPc);
-    toolbar->addAction("⊕ Switch", this, &MainWindow::addSwitch);
-    toolbar->addAction("⊕ Router", this, &MainWindow::addRouter);
+    toolbar->addAction(iconForDeviceType(DeviceType::Pc), "PC", this, &MainWindow::addPc);
+    toolbar->addAction(iconForDeviceType(DeviceType::Switch), "Switch", this, &MainWindow::addSwitch);
+    toolbar->addAction(iconForDeviceType(DeviceType::Router), "Router", this, &MainWindow::addRouter);
     toolbar->addSeparator();
-    toolbar->addAction("⊕ Laptop", this, &MainWindow::addLaptop);
-    toolbar->addAction("⊕ Server", this, &MainWindow::addServer);
-    toolbar->addAction("⊕ Phone",  this, &MainWindow::addIpPhone);
-    toolbar->addAction("⊕ Camera", this, &MainWindow::addIpCamera);
-    toolbar->addAction("⊕ AP",     this, &MainWindow::addWirelessAp);
-    toolbar->addAction("⊕ L3 SW",  this, &MainWindow::addSwitchL3);
-    toolbar->addAction("⊕ FW",     this, &MainWindow::addFirewall);
+    toolbar->addAction(iconForDeviceType(DeviceType::Laptop), "Laptop", this, &MainWindow::addLaptop);
+    toolbar->addAction(iconForDeviceType(DeviceType::Server), "Server", this, &MainWindow::addServer);
+    toolbar->addAction(iconForDeviceType(DeviceType::IpPhone), "Phone", this, &MainWindow::addIpPhone);
+    toolbar->addAction(iconForDeviceType(DeviceType::IpCamera), "Camera", this, &MainWindow::addIpCamera);
+    toolbar->addAction(iconForDeviceType(DeviceType::WirelessAp), "AP", this, &MainWindow::addWirelessAp);
+    toolbar->addAction(iconForDeviceType(DeviceType::SwitchL3), "L3 SW", this, &MainWindow::addSwitchL3);
+    toolbar->addAction(iconForDeviceType(DeviceType::Firewall), "FW", this, &MainWindow::addFirewall);
     toolbar->addSeparator();
-    toolbar->addAction("▶ Tick", this, &MainWindow::runSimulationTick);
+    toolbar->addAction(style()->standardIcon(QStyle::SP_MediaPlay), "Tick", this, &MainWindow::runSimulationTick);
     toolbar->setMovable(false);
 
     // ── Topology view ─────────────────────────────────────────────────────────
@@ -123,8 +183,12 @@ MainWindow::MainWindow()
     detailsForm->addRow("IF IP",       m_interfaceIpEdit);
     detailsForm->addRow("IF Mask",     m_interfaceMaskEdit);
     detailsLayout->addLayout(detailsForm);
+    auto* configButtonRow = new QHBoxLayout();
     auto* applyButton = new QPushButton("Apply Device Config", detailsWidget);
-    detailsLayout->addWidget(applyButton);
+    auto* consoleButton = new QPushButton("Open Console", detailsWidget);
+    configButtonRow->addWidget(applyButton);
+    configButtonRow->addWidget(consoleButton);
+    detailsLayout->addLayout(configButtonRow);
     m_deviceDetails->setWordWrap(true);
     detailsLayout->addWidget(m_deviceDetails);
 
@@ -205,6 +269,20 @@ MainWindow::MainWindow()
     testTabs->addTab(linksWidget, "Links");
 
     m_logView->setReadOnly(true);
+    m_labDetailsView->setReadOnly(true);
+    m_cliReferenceView->setReadOnly(true);
+    m_labDetailsView->setMinimumHeight(180);
+    m_cliReferenceView->setMinimumHeight(220);
+    m_featureCoverageLabel->setWordWrap(true);
+    m_featureCoverageLabel->setObjectName("mutedLabel");
+    m_featureCoverageLabel->setText(
+        "Implemented now: topology editing, save/load, static routes, ping/traceroute, subnet audit, lab presets.\n"
+        "Planned next: OSPF/RIP engines, VLAN semantics, ACL evaluation, DHCP pools, EtherChannel, STP.");
+
+    m_applyLabButton = new QToolButton(this);
+    m_applyLabButton->setText("Load Starter");
+    m_applyLabButton->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
+    m_applyLabButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
 
     // ── Left panel ───────────────────────────────────────────────────────────
     auto* leftPanel = new QWidget(this);
@@ -218,6 +296,12 @@ MainWindow::MainWindow()
     leftLayout->addWidget(leftTitle);
     leftLayout->addWidget(leftSubtitle);
     leftLayout->addWidget(buildSidebarCard("Device Inventory", m_deviceList));
+    auto* labWidget = new QWidget(this);
+    auto* labLayout = new QVBoxLayout(labWidget);
+    labLayout->setContentsMargins(0, 0, 0, 0);
+    labLayout->addWidget(m_labList);
+    labLayout->addWidget(m_applyLabButton);
+    leftLayout->addWidget(buildSidebarCard("CCNA Lab Library", labWidget));
     leftLayout->addStretch();
 
     // ── Scene panel ──────────────────────────────────────────────────────────
@@ -239,6 +323,9 @@ MainWindow::MainWindow()
     auto* rightLayout = new QVBoxLayout(rightPanel);
     rightLayout->addWidget(buildSidebarCard("Inspector", detailsWidget));
     rightLayout->addWidget(m_routeCard);
+    rightLayout->addWidget(buildSidebarCard("Feature Coverage", m_featureCoverageLabel));
+    rightLayout->addWidget(buildSidebarCard("Lab Notes", m_labDetailsView));
+    rightLayout->addWidget(buildSidebarCard("CLI Reference", m_cliReferenceView));
     rightLayout->addWidget(buildSidebarCard("Simulation", testTabs));
     rightLayout->addWidget(buildSidebarCard("Simulation Log", m_logView), 1);
 
@@ -259,17 +346,23 @@ MainWindow::MainWindow()
     connect(m_topologyScene, &TopologyScene::deviceMoved,                this, &MainWindow::handleSceneDeviceMoved);
     connect(m_topologyScene, &TopologyScene::deviceMoveCommitted,        this, &MainWindow::handleSceneDeviceMoveCommitted);
     connect(m_topologyScene, &TopologyScene::cableRequested,             this, &MainWindow::handleSceneCableRequested);
+    connect(m_topologyScene, &TopologyScene::cableMoveRequested,         this, &MainWindow::handleSceneCableMoveRequested);
     connect(m_topologyScene, &TopologyScene::linkSelected,               this, &MainWindow::handleSceneLinkSelected);
+    connect(m_topologyScene, &TopologyScene::deviceActivated,            this, &MainWindow::openDeviceConsoleForId);
     connect(m_topologyScene, &TopologyScene::deviceContextMenuRequested, this, &MainWindow::showDeviceContextMenu);
     connect(m_topologyScene, &TopologyScene::linkContextMenuRequested,   this, &MainWindow::showLinkContextMenu);
     connect(m_topologyScene, &TopologyScene::canvasContextMenuRequested, this, &MainWindow::showCanvasContextMenu);
     connect(applyButton,     &QPushButton::clicked,                      this, &MainWindow::applyDeviceConfiguration);
+    connect(consoleButton,   &QPushButton::clicked,                      this, &MainWindow::openDeviceConsole);
+    connect(m_applyLabButton, &QToolButton::clicked,                     this, &MainWindow::applySelectedLabPreset);
     connect(m_interfaceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::syncSelectedDeviceDetails);
     connect(m_linkLeftDeviceCombo,  QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::syncLinkCreationControls);
     connect(m_linkRightDeviceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::syncLinkCreationControls);
+    connect(m_labList, &QListWidget::currentRowChanged, this, &MainWindow::syncLabDetails);
 
     // Initialise test target visibility
     onTestTypeChanged(0);
+    populateLabLibrary();
 
     rebuildDeviceList();
     rebuildTopology();
@@ -277,6 +370,7 @@ MainWindow::MainWindow()
     appendLog("PacketLab initialized.");
     syncSelectedDeviceDetails();
     syncLinkCreationControls();
+    syncLabDetails();
     pushHistorySnapshot();
     refreshActionStates();
 }
@@ -584,6 +678,10 @@ void MainWindow::handleSceneCableRequested(int leftDeviceId, int leftInterfaceIn
     tryCreateLink(leftDeviceId, leftInterfaceIndex, rightDeviceId, rightInterfaceIndex, true);
 }
 
+void MainWindow::handleSceneCableMoveRequested(int linkId, bool moveLeftSide, int targetDeviceId, int targetInterfaceIndex) {
+    tryMoveLinkEndpoint(linkId, moveLeftSide, targetDeviceId, targetInterfaceIndex, true);
+}
+
 void MainWindow::handleSceneLinkSelected(int linkId) {
     m_selectedLinkId = linkId;
     m_deviceList->clearSelection();
@@ -594,6 +692,7 @@ void MainWindow::handleSceneLinkSelected(int linkId) {
 void MainWindow::showDeviceContextMenu(int deviceId, QPointF screenPos) {
     selectDeviceById(deviceId);
     QMenu menu(this);
+    menu.addAction("Open Console", this, &MainWindow::openDeviceConsole);
     menu.addAction("Delete Device", this, &MainWindow::deleteSelection);
     menu.addAction("Run Ping",      this, &MainWindow::runPing);
     menu.exec(screenPos.toPoint());
@@ -637,6 +736,7 @@ void MainWindow::deleteSelection() {
         const QString name = device->name();
         const int id = device->id();
         if (m_model.removeDevice(id)) {
+            m_selectedLinkId = -1;
             rebuildDeviceList(); rebuildTopology();
             syncSelectedDeviceDetails(); pushHistorySnapshot(); refreshActionStates();
             appendLog(QString("Deleted device %1").arg(name));
@@ -668,6 +768,31 @@ void MainWindow::syncSelectedDeviceDetails() {
     refreshDeviceDetails(selectedDevice());
 }
 
+void MainWindow::openDeviceConsole() {
+    if (const auto* device = selectedDevice()) {
+        openDeviceConsoleForId(device->id());
+    }
+}
+
+void MainWindow::openDeviceConsoleForId(int deviceId) {
+    if (!m_model.findDevice(deviceId)) {
+        return;
+    }
+    auto* dialog = new DeviceConsoleDialog(m_model, m_simulator, deviceId, this);
+    connect(dialog, &DeviceConsoleDialog::modelMutated, this, [this](int changedDeviceId) {
+        rebuildDeviceList();
+        rebuildTopology();
+        selectDeviceById(changedDeviceId);
+        syncSelectedDeviceDetails();
+        syncLinkCreationControls();
+        pushHistorySnapshot();
+        refreshActionStates();
+    });
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
+}
+
 void MainWindow::createLink() {
     tryCreateLink(
         m_linkLeftDeviceCombo->currentData().toInt(),
@@ -685,7 +810,7 @@ void MainWindow::syncLinkCreationControls() {
 // ── Private helpers ───────────────────────────────────────────────────────────
 
 void MainWindow::rebuildDeviceList() {
-    const int previousRow = m_deviceList->currentRow();
+    const int previousDeviceId = selectedDevice() ? selectedDevice()->id() : -1;
     m_deviceList->clear();
     for (const auto& device : m_model.devices()) {
         auto* item = new QListWidgetItem(
@@ -693,12 +818,17 @@ void MainWindow::rebuildDeviceList() {
                 .arg(device.name(), device.ipAddress().isEmpty() ? device.typeLabel() : device.ipAddress()),
             m_deviceList);
         item->setData(Qt::UserRole, device.id());
+        item->setIcon(iconForDeviceType(device.type()));
         item->setToolTip(QString("%1 | %2 interfaces").arg(device.typeLabel()).arg(device.interfaces().size()));
         item->setSizeHint(QSize(item->sizeHint().width(), 48));
     }
     if (!m_model.devices().empty()) {
-        const int nextRow = previousRow >= 0 && previousRow < m_deviceList->count() ? previousRow : 0;
-        m_deviceList->setCurrentRow(nextRow);
+        if (previousDeviceId > 0) {
+            selectDeviceById(previousDeviceId);
+        }
+        if (!m_deviceList->currentItem()) {
+            m_deviceList->setCurrentRow(0);
+        }
     }
     syncLinkCreationControls();
     updateStatusBar();
@@ -736,6 +866,7 @@ void MainWindow::refreshDeviceDetails(const Device* device) {
         m_interfaceMaskEdit->clear();
         m_deviceDetails->setText("Select a device to inspect its network settings.");
         refreshRouteTable(nullptr);
+        syncCliReference();
         return;
     }
 
@@ -777,6 +908,203 @@ void MainWindow::refreshDeviceDetails(const Device* device) {
     m_deviceDetails->setText(text);
 
     refreshRouteTable(device);
+    syncCliReference();
+}
+
+void MainWindow::populateLabLibrary() {
+    m_labList->clear();
+    for (const auto& preset : labPresets()) {
+        auto* item = new QListWidgetItem(
+            QString("%1\n%2").arg(preset.title, preset.category),
+            m_labList);
+        item->setData(Qt::UserRole, preset.id);
+        item->setToolTip(preset.summary);
+        item->setSizeHint(QSize(item->sizeHint().width(), 52));
+    }
+    if (m_labList->count() > 0) {
+        m_labList->setCurrentRow(0);
+    }
+}
+
+void MainWindow::syncLabDetails() {
+    const auto* item = m_labList->currentItem();
+    if (!item) {
+        m_labDetailsView->clear();
+        return;
+    }
+
+    const auto* preset = findLabPreset(item->data(Qt::UserRole).toString());
+    if (!preset) {
+        m_labDetailsView->clear();
+        return;
+    }
+
+    m_labDetailsView->setPlainText(
+        QString("%1\n\nCategory: %2\n\nSummary\n%3\n\nFocus\n%4\n\nStarter Config Idea\n%5")
+            .arg(preset->title, preset->category, preset->summary, preset->focus, preset->configHints));
+}
+
+void MainWindow::applySelectedLabPreset() {
+    const auto* item = m_labList->currentItem();
+    if (!item) {
+        return;
+    }
+    loadLabPreset(item->data(Qt::UserRole).toString());
+}
+
+void MainWindow::loadLabPreset(const QString& presetId) {
+    m_model.clear();
+
+    if (presetId == "static-routing") {
+        auto& pcA = m_model.addDevice(DeviceType::Pc, "PC");
+        auto& r1 = m_model.addDevice(DeviceType::Router, "R");
+        auto& r2 = m_model.addDevice(DeviceType::Router, "R");
+        auto& pcB = m_model.addDevice(DeviceType::Pc, "PC");
+        pcA.setIpAddress("192.168.10.10"); pcA.setDefaultGateway("192.168.10.1");
+        pcB.setIpAddress("192.168.20.10"); pcB.setDefaultGateway("192.168.20.1");
+        if (auto* i = r1.interfaceAt(0)) { i->setIpAddress("192.168.10.1"); i->setSubnetMask("255.255.255.0"); }
+        if (auto* i = r1.interfaceAt(1)) { i->setIpAddress("10.0.0.1"); i->setSubnetMask("255.255.255.252"); }
+        if (auto* i = r2.interfaceAt(0)) { i->setIpAddress("10.0.0.2"); i->setSubnetMask("255.255.255.252"); }
+        if (auto* i = r2.interfaceAt(1)) { i->setIpAddress("192.168.20.1"); i->setSubnetMask("255.255.255.0"); }
+        r1.routingTable().push_back({"192.168.20.0", "255.255.255.0", "10.0.0.2", 1});
+        r2.routingTable().push_back({"192.168.10.0", "255.255.255.0", "10.0.0.1", 1});
+        m_model.addLink(pcA.id(), 0, r1.id(), 0);
+        m_model.addLink(r1.id(), 1, r2.id(), 0);
+        m_model.addLink(r2.id(), 1, pcB.id(), 0);
+    } else if (presetId == "ospf-area0") {
+        auto& pcA = m_model.addDevice(DeviceType::Pc, "PC");
+        auto& r1 = m_model.addDevice(DeviceType::Router, "R");
+        auto& r2 = m_model.addDevice(DeviceType::Router, "R");
+        auto& r3 = m_model.addDevice(DeviceType::Router, "R");
+        auto& pcB = m_model.addDevice(DeviceType::Pc, "PC");
+        pcA.setIpAddress("192.168.10.10"); pcA.setDefaultGateway("192.168.10.1");
+        pcB.setIpAddress("192.168.30.10"); pcB.setDefaultGateway("192.168.30.1");
+        if (auto* i = r1.interfaceAt(0)) { i->setIpAddress("192.168.10.1"); i->setSubnetMask("255.255.255.0"); }
+        if (auto* i = r1.interfaceAt(1)) { i->setIpAddress("10.0.12.1"); i->setSubnetMask("255.255.255.252"); }
+        if (auto* i = r2.interfaceAt(0)) { i->setIpAddress("10.0.12.2"); i->setSubnetMask("255.255.255.252"); }
+        if (auto* i = r2.interfaceAt(1)) { i->setIpAddress("10.0.23.1"); i->setSubnetMask("255.255.255.252"); }
+        if (auto* i = r3.interfaceAt(0)) { i->setIpAddress("10.0.23.2"); i->setSubnetMask("255.255.255.252"); }
+        if (auto* i = r3.interfaceAt(1)) { i->setIpAddress("192.168.30.1"); i->setSubnetMask("255.255.255.0"); }
+        m_model.addLink(pcA.id(), 0, r1.id(), 0);
+        m_model.addLink(r1.id(), 1, r2.id(), 0);
+        m_model.addLink(r2.id(), 1, r3.id(), 0);
+        m_model.addLink(r3.id(), 1, pcB.id(), 0);
+    } else if (presetId == "vlan-roas") {
+        auto& pcA = m_model.addDevice(DeviceType::Pc, "PC");
+        auto& pcB = m_model.addDevice(DeviceType::Pc, "PC");
+        auto& sw = m_model.addDevice(DeviceType::Switch, "SW");
+        auto& r1 = m_model.addDevice(DeviceType::Router, "R");
+        pcA.setIpAddress("192.168.10.10"); pcA.setDefaultGateway("192.168.10.1");
+        pcB.setIpAddress("192.168.20.10"); pcB.setDefaultGateway("192.168.20.1");
+        if (auto* i = r1.interfaceAt(0)) { i->setIpAddress("192.168.10.1"); i->setSubnetMask("255.255.255.0"); }
+        if (auto* i = r1.interfaceAt(1)) { i->setIpAddress("192.168.20.1"); i->setSubnetMask("255.255.255.0"); }
+        m_model.addLink(pcA.id(), 0, sw.id(), 0);
+        m_model.addLink(pcB.id(), 0, sw.id(), 1);
+        m_model.addLink(sw.id(), 2, r1.id(), 0);
+    } else if (presetId == "acl-policy") {
+        auto& pcA = m_model.addDevice(DeviceType::Pc, "PC");
+        auto& r1 = m_model.addDevice(DeviceType::Router, "R");
+        auto& fw = m_model.addDevice(DeviceType::Firewall, "FW");
+        auto& srv = m_model.addDevice(DeviceType::Server, "SRV");
+        pcA.setIpAddress("192.168.10.10"); pcA.setDefaultGateway("192.168.10.1");
+        srv.setIpAddress("192.168.30.10"); srv.setDefaultGateway("192.168.30.1");
+        if (auto* i = r1.interfaceAt(0)) { i->setIpAddress("192.168.10.1"); i->setSubnetMask("255.255.255.0"); }
+        if (auto* i = r1.interfaceAt(1)) { i->setIpAddress("10.0.0.1"); i->setSubnetMask("255.255.255.252"); }
+        if (auto* i = fw.interfaceAt(0)) { i->setIpAddress("10.0.0.2"); i->setSubnetMask("255.255.255.252"); }
+        if (auto* i = fw.interfaceAt(1)) { i->setIpAddress("192.168.30.1"); i->setSubnetMask("255.255.255.0"); }
+        m_model.addLink(pcA.id(), 0, r1.id(), 0);
+        m_model.addLink(r1.id(), 1, fw.id(), 0);
+        m_model.addLink(fw.id(), 1, srv.id(), 0);
+    } else if (presetId == "wireless-lan") {
+        auto& lap = m_model.addDevice(DeviceType::Laptop, "LAP");
+        auto& ap = m_model.addDevice(DeviceType::WirelessAp, "AP");
+        auto& sw = m_model.addDevice(DeviceType::Switch, "SW");
+        auto& r1 = m_model.addDevice(DeviceType::Router, "R");
+        lap.setIpAddress("192.168.50.20"); lap.setDefaultGateway("192.168.50.1");
+        if (auto* i = ap.interfaceAt(0)) { i->setIpAddress("192.168.50.2"); i->setSubnetMask("255.255.255.0"); }
+        if (auto* i = r1.interfaceAt(0)) { i->setIpAddress("192.168.50.1"); i->setSubnetMask("255.255.255.0"); }
+        m_model.addLink(ap.id(), 0, sw.id(), 0);
+        m_model.addLink(sw.id(), 1, r1.id(), 0);
+    } else if (presetId == "campus-core") {
+        auto& core = m_model.addDevice(DeviceType::SwitchL3, "L3");
+        auto& access = m_model.addDevice(DeviceType::Switch, "SW");
+        auto& fw = m_model.addDevice(DeviceType::Firewall, "FW");
+        auto& pcA = m_model.addDevice(DeviceType::Pc, "PC");
+        auto& pcB = m_model.addDevice(DeviceType::Pc, "PC");
+        pcA.setIpAddress("10.10.10.20"); pcA.setDefaultGateway("10.10.10.1");
+        pcB.setIpAddress("10.20.20.20"); pcB.setDefaultGateway("10.20.20.1");
+        if (auto* i = core.interfaceAt(0)) { i->setIpAddress("10.10.10.1"); i->setSubnetMask("255.255.255.0"); }
+        if (auto* i = core.interfaceAt(1)) { i->setIpAddress("10.20.20.1"); i->setSubnetMask("255.255.255.0"); }
+        if (auto* i = core.interfaceAt(2)) { i->setIpAddress("172.16.0.2"); i->setSubnetMask("255.255.255.252"); }
+        if (auto* i = fw.interfaceAt(0)) { i->setIpAddress("172.16.0.1"); i->setSubnetMask("255.255.255.252"); }
+        m_model.addLink(pcA.id(), 0, access.id(), 0);
+        m_model.addLink(pcB.id(), 0, access.id(), 1);
+        m_model.addLink(access.id(), 2, core.id(), 0);
+        m_model.addLink(core.id(), 2, fw.id(), 0);
+    }
+
+    rebuildDeviceList();
+    rebuildTopology();
+    syncSelectedDeviceDetails();
+    syncLinkCreationControls();
+    pushHistorySnapshot();
+    refreshActionStates();
+    appendLog(QString("Loaded lab preset: %1").arg(presetId));
+}
+
+void MainWindow::syncCliReference() {
+    const auto* device = selectedDevice();
+    QString cli;
+    if (!device) {
+        cli =
+            "No device selected.\n\n"
+            "Packet Tracer style gaps still open:\n"
+            "- Dynamic OSPF/RIP engine\n"
+            "- VLAN/trunk enforcement\n"
+            "- ACL rule evaluation\n"
+            "- DHCP pool allocation\n"
+            "- STP/EtherChannel state";
+    } else if (device->isL3Capable()) {
+        cli = QString(
+            "enable\nconf t\n"
+            "hostname %1\n"
+            "interface %2\n"
+            " ip address %3 %4\n"
+            " no shutdown\n"
+            "!\n"
+            "show ip route\nshow ip interface brief")
+            .arg(device->name(),
+                 device->interfaces().empty() ? "g0/0" : device->interfaces().front().name(),
+                 device->ipAddress().isEmpty() ? "<device-ip>" : device->ipAddress(),
+                 device->subnetMask().isEmpty() ? "255.255.255.0" : device->subnetMask());
+    } else if (device->type() == DeviceType::Switch || device->type() == DeviceType::SwitchL3) {
+        cli = QString(
+            "enable\nconf t\n"
+            "hostname %1\n"
+            "vlan 10\n name USERS\n"
+            "interface fa0/1\n switchport mode access\n switchport access vlan 10\n"
+            "show interfaces status\nshow vlan brief")
+            .arg(device->name());
+    } else if (device->type() == DeviceType::WirelessAp) {
+        cli = QString(
+            "ssid CampusWiFi\n"
+            "interface eth0\n"
+            " ip address %1 %2\n"
+            " default-gateway %3")
+            .arg(device->ipAddress().isEmpty() ? "<ap-ip>" : device->ipAddress(),
+                 device->subnetMask().isEmpty() ? "255.255.255.0" : device->subnetMask(),
+                 device->defaultGateway().isEmpty() ? "<gateway>" : device->defaultGateway());
+    } else {
+        cli = QString(
+            "# End-host notes for %1\n"
+            "IP: %2\nMask: %3\nGateway: %4\n\n"
+            "Useful checks:\n- ping <gateway>\n- ping <remote-host>\n- verify link LED / port usage")
+            .arg(device->name(),
+                 device->ipAddress().isEmpty() ? "<ip>" : device->ipAddress(),
+                 device->subnetMask().isEmpty() ? "255.255.255.0" : device->subnetMask(),
+                 device->defaultGateway().isEmpty() ? "<gateway>" : device->defaultGateway());
+    }
+    m_cliReferenceView->setPlainText(cli);
 }
 
 QWidget* MainWindow::buildSidebarCard(const QString& title, QWidget* content) {
@@ -902,6 +1230,7 @@ void MainWindow::selectDeviceById(int deviceId) {
             return;
         }
     }
+    m_deviceList->clearSelection();
 }
 
 bool MainWindow::tryCreateLink(int leftDeviceId, int leftInterfaceIndex, int rightDeviceId, int rightInterfaceIndex, bool showMessages) {
@@ -920,6 +1249,50 @@ bool MainWindow::tryCreateLink(int leftDeviceId, int leftInterfaceIndex, int rig
     appendLog(QString("Created link: %1:%2 <-> %3:%4")
         .arg(leftDeviceId).arg(leftInterfaceIndex + 1)
         .arg(rightDeviceId).arg(rightInterfaceIndex + 1));
+    return true;
+}
+
+bool MainWindow::tryMoveLinkEndpoint(int linkId, bool moveLeftSide, int targetDeviceId, int targetInterfaceIndex, bool showMessages) {
+    const auto* link = m_model.findLink(linkId);
+    if (!link) {
+        if (showMessages) QMessageBox::warning(this, "Move Cable", "Original cable was not found.");
+        return false;
+    }
+
+    const int currentTargetDeviceId = moveLeftSide ? link->leftDeviceId() : link->rightDeviceId();
+    const int currentTargetInterfaceIndex = moveLeftSide ? link->leftInterfaceIndex() : link->rightInterfaceIndex();
+    if (currentTargetDeviceId == targetDeviceId && currentTargetInterfaceIndex == targetInterfaceIndex) {
+        return true;
+    }
+
+    const auto* occupying = m_model.findLinkForInterface(targetDeviceId, targetInterfaceIndex);
+    if (occupying && occupying->id() != linkId) {
+        if (showMessages) QMessageBox::warning(this, "Port Busy", "Target port is already in use.");
+        return false;
+    }
+
+    const int fixedDeviceId = moveLeftSide ? link->rightDeviceId() : link->leftDeviceId();
+    const int fixedInterfaceIndex = moveLeftSide ? link->rightInterfaceIndex() : link->leftInterfaceIndex();
+    if (fixedDeviceId == targetDeviceId) {
+        if (showMessages) QMessageBox::warning(this, "Invalid Move", "Cable ends cannot terminate on the same device.");
+        return false;
+    }
+
+    m_model.removeLink(linkId);
+    if (moveLeftSide) {
+        m_model.addLink(targetDeviceId, targetInterfaceIndex, fixedDeviceId, fixedInterfaceIndex);
+    } else {
+        m_model.addLink(fixedDeviceId, fixedInterfaceIndex, targetDeviceId, targetInterfaceIndex);
+    }
+    m_selectedLinkId = -1;
+    rebuildTopology();
+    syncLinkCreationControls();
+    pushHistorySnapshot();
+    refreshActionStates();
+    appendLog(QString("Moved cable #%1 to %2:%3")
+                  .arg(linkId)
+                  .arg(targetDeviceId)
+                  .arg(targetInterfaceIndex + 1));
     return true;
 }
 
@@ -948,6 +1321,30 @@ void MainWindow::refreshActionStates() {
     if (m_undoAction) m_undoAction->setEnabled(m_undoStack.size() > 1);
     if (m_redoAction) m_redoAction->setEnabled(!m_redoStack.isEmpty());
     updateStatusBar();
+}
+
+QIcon MainWindow::iconForDeviceType(DeviceType type) const {
+    switch (type) {
+    case DeviceType::Pc:
+    case DeviceType::Laptop:
+        return style()->standardIcon(QStyle::SP_ComputerIcon);
+    case DeviceType::Server:
+        return style()->standardIcon(QStyle::SP_DriveNetIcon);
+    case DeviceType::IpPhone:
+        return style()->standardIcon(QStyle::SP_DialogYesButton);
+    case DeviceType::IpCamera:
+        return style()->standardIcon(QStyle::SP_MediaPlay);
+    case DeviceType::WirelessAp:
+        return style()->standardIcon(QStyle::SP_BrowserReload);
+    case DeviceType::Switch:
+    case DeviceType::SwitchL3:
+        return style()->standardIcon(QStyle::SP_FileDialogListView);
+    case DeviceType::Router:
+        return style()->standardIcon(QStyle::SP_ArrowRight);
+    case DeviceType::Firewall:
+        return style()->standardIcon(QStyle::SP_MessageBoxWarning);
+    }
+    return style()->standardIcon(QStyle::SP_FileIcon);
 }
 
 } // namespace packetlab

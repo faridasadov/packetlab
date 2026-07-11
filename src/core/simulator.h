@@ -26,6 +26,9 @@ private:
     const Device* resolveNextHop(const Device& current, const QString& targetIp) const;
     bool deviceCanDirectlyReach(const Device& device, const QString& targetIp) const;
     bool areConnected(int deviceIdA, int deviceIdB) const;
+    int connectedInterfaceIndex(int fromDeviceId, int toDeviceId) const;
+    bool aclAllowsTraffic(const Device& destinationDevice, int inboundInterfaceIndex, const QString& sourceIp, const QString& targetIp) const;
+    static bool aclAddressMatches(const QString& spec, const QString& ip);
     static quint32 ipv4ToInt(const QString& value, bool* ok);
     static bool sameSubnet(const QString& ipA, const QString& ipB, const QString& mask);
     NetworkModel& m_model;

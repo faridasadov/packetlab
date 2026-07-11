@@ -18,6 +18,31 @@ struct RouteEntry {
     int metric = 1;
 };
 
+struct VlanEntry {
+    int id = 1;
+    QString name = "default";
+};
+
+struct DhcpPool {
+    QString name;
+    QString network;
+    QString mask;
+    QString defaultRouter;
+    QString dnsServer;
+};
+
+struct AclRule {
+    QString action;
+    QString protocol;
+    QString source;
+    QString destination;
+};
+
+struct AccessList {
+    QString name;
+    std::vector<AclRule> rules;
+};
+
 class Device {
 public:
     Device(int id, DeviceType type, QString name);
@@ -39,6 +64,13 @@ public:
     const NetworkInterface* interfaceAt(int index) const;
     const std::vector<RouteEntry>& routingTable() const;
     std::vector<RouteEntry>& routingTable();
+    const std::vector<VlanEntry>& vlanDatabase() const;
+    std::vector<VlanEntry>& vlanDatabase();
+    const std::vector<DhcpPool>& dhcpPools() const;
+    std::vector<DhcpPool>& dhcpPools();
+    const std::vector<AccessList>& accessLists() const;
+    std::vector<AccessList>& accessLists();
+    bool isSwitchLike() const;
     bool isL3Capable() const;
     QString typeLabel() const;
     QString typeId() const;
@@ -52,6 +84,9 @@ private:
     QString m_defaultGateway;
     std::vector<NetworkInterface> m_interfaces;
     std::vector<RouteEntry> m_routingTable;
+    std::vector<VlanEntry> m_vlanDatabase;
+    std::vector<DhcpPool> m_dhcpPools;
+    std::vector<AccessList> m_accessLists;
 };
 
 } // namespace packetlab

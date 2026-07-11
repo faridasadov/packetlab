@@ -434,6 +434,13 @@ public:
     }
 
     int linkId() const { return m_link.id(); }
+    bool usesInterface(int deviceId, int interfaceIndex) const {
+        return (m_link.leftDeviceId() == deviceId && m_link.leftInterfaceIndex() == interfaceIndex)
+            || (m_link.rightDeviceId() == deviceId && m_link.rightInterfaceIndex() == interfaceIndex);
+    }
+    bool movesLeftWhenDraggingFrom(int deviceId, int interfaceIndex) const {
+        return m_link.leftDeviceId() == deviceId && m_link.leftInterfaceIndex() == interfaceIndex;
+    }
 
     void setSelectedState(bool selected) {
         if (m_selected == selected) return;
@@ -528,7 +535,9 @@ TopologyScene::TopologyScene(QObject* parent)
       m_selectedLinkId(-1),
       m_temporaryCable(nullptr),
       m_dragDeviceId(-1),
-      m_dragInterfaceIndex(-1) {
+      m_dragInterfaceIndex(-1),
+      m_dragLinkId(-1),
+      m_dragMovingLeftSide(false) {
     setSceneRect(0.0, 0.0, 2400.0, 1600.0);
 }
 
@@ -537,6 +546,8 @@ void TopologyScene::rebuild(const NetworkModel& model) {
     m_temporaryCable = nullptr;
     m_dragDeviceId = -1;
     m_dragInterfaceIndex = -1;
+    m_dragLinkId = -1;
+    m_dragMovingLeftSide = false;
 
     QHash<int, DeviceNodeItem*> deviceItems;
     for (const auto& device : model.devices()) {
@@ -638,6 +649,17 @@ void TopologyScene::mousePressEvent(QGraphicsSceneMouseEvent* event) {
 
         const int interfaceIndex = node->interfaceAtScenePoint(event->scenePos());
         if (interfaceIndex >= 0) {
+            m_dragLinkId = -1;
+            m_dragMovingLeftSide = false;
+            for (QGraphicsItem* other : items()) {
+                auto* edgeItem = dynamic_cast<LinkEdgeItem*>(other);
+                if (!edgeItem || !edgeItem->usesInterface(node->deviceId(), interfaceIndex)) {
+                    continue;
+                }
+                m_dragLinkId = edgeItem->linkId();
+                m_dragMovingLeftSide = edgeItem->movesLeftWhenDraggingFrom(node->deviceId(), interfaceIndex);
+                break;
+            }
             m_dragDeviceId = node->deviceId();
             m_dragInterfaceIndex = interfaceIndex;
             const QPointF start = node->interfaceAnchorScenePoint(interfaceIndex);
@@ -650,6 +672,17 @@ void TopologyScene::mousePressEvent(QGraphicsSceneMouseEvent* event) {
         }
     }
     QGraphicsScene::mousePressEvent(event);
+}
+
+void TopologyScene::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) {
+    for (QGraphicsItem* item : items(event->scenePos())) {
+        if (auto* node = dynamic_cast<DeviceNodeItem*>(item)) {
+            emit deviceActivated(node->deviceId());
+            event->accept();
+            return;
+        }
+    }
+    QGraphicsScene::mouseDoubleClickEvent(event);
 }
 
 void TopologyScene::mouseMoveEvent(QGraphicsSceneMouseEvent* event) {
@@ -671,8 +704,12 @@ void TopologyScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* event) {
             const int targetIndex = node->interfaceAtScenePoint(event->scenePos());
             if (targetIndex >= 0 &&
                 !(node->deviceId() == m_dragDeviceId && targetIndex == m_dragInterfaceIndex)) {
-                emit cableRequested(m_dragDeviceId, m_dragInterfaceIndex,
-                                    node->deviceId(), targetIndex);
+                if (m_dragLinkId >= 0) {
+                    emit cableMoveRequested(m_dragLinkId, m_dragMovingLeftSide, node->deviceId(), targetIndex);
+                } else {
+                    emit cableRequested(m_dragDeviceId, m_dragInterfaceIndex,
+                                        node->deviceId(), targetIndex);
+                }
                 break;
             }
         }
@@ -691,6 +728,8 @@ void TopologyScene::clearInteractionArtifacts() {
     }
     m_dragDeviceId = -1;
     m_dragInterfaceIndex = -1;
+    m_dragLinkId = -1;
+    m_dragMovingLeftSide = false;
 }
 
 }  // namespace packetlab

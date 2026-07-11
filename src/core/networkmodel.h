@@ -14,7 +14,9 @@ public:
     const std::vector<Device>& devices() const;
     const std::vector<Link>& links() const;
     Device& addDevice(DeviceType type, const QString& baseName);
+    Device& addDeviceWithId(int id, DeviceType type, const QString& name);
     Link& addLink(int leftDeviceId, int leftInterfaceIndex, int rightDeviceId, int rightInterfaceIndex);
+    Link& addLinkWithId(int id, int leftDeviceId, int leftInterfaceIndex, int rightDeviceId, int rightInterfaceIndex);
     Device* findDevice(int id);
     const Device* findDevice(int id) const;
     Link* findLink(int id);

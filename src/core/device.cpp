@@ -36,8 +36,14 @@ Device::Device(int id, DeviceType type, QString name)
         break;
     case DeviceType::Switch:
     case DeviceType::SwitchL3:
-        for (int i = 0; i < 8; ++i)
+        m_vlanDatabase.push_back({1, "default"});
+        for (int i = 0; i < 8; ++i) {
             m_interfaces.emplace_back(QString("fa0/%1").arg(i + 1));
+            m_interfaces.back().setPortMode(PortMode::Access);
+            m_interfaces.back().setAccessVlan(1);
+            m_interfaces.back().setNativeVlan(1);
+            m_interfaces.back().setAllowedVlans("1");
+        }
         break;
     case DeviceType::Router:
         m_interfaces.emplace_back("g0/0");
@@ -81,6 +87,16 @@ const NetworkInterface* Device::interfaceAt(int index) const {
 
 const std::vector<RouteEntry>& Device::routingTable() const { return m_routingTable; }
 std::vector<RouteEntry>& Device::routingTable() { return m_routingTable; }
+const std::vector<VlanEntry>& Device::vlanDatabase() const { return m_vlanDatabase; }
+std::vector<VlanEntry>& Device::vlanDatabase() { return m_vlanDatabase; }
+const std::vector<DhcpPool>& Device::dhcpPools() const { return m_dhcpPools; }
+std::vector<DhcpPool>& Device::dhcpPools() { return m_dhcpPools; }
+const std::vector<AccessList>& Device::accessLists() const { return m_accessLists; }
+std::vector<AccessList>& Device::accessLists() { return m_accessLists; }
+
+bool Device::isSwitchLike() const {
+    return m_type == DeviceType::Switch || m_type == DeviceType::SwitchL3;
+}
 
 bool Device::isL3Capable() const {
     return m_type == DeviceType::Router

@@ -4,9 +4,26 @@
 #include <QList>
 #include <QSet>
 #include <QHash>
+#include <QRegularExpression>
 #include <QStringList>
 
 namespace packetlab {
+
+namespace {
+
+bool deviceOwnsIp(const Device& device, const QString& ip) {
+    if (device.ipAddress() == ip) {
+        return true;
+    }
+    for (const auto& iface : device.interfaces()) {
+        if (iface.ipAddress() == ip) {
+            return true;
+        }
+    }
+    return false;
+}
+
+}
 
 Simulator::Simulator(NetworkModel& model) : m_model(model), m_tick(0) {}
 
@@ -312,7 +329,7 @@ Simulator::TraceResult Simulator::traceRoute(const Device& source, const QString
     // Find target device
     const Device* targetDev = nullptr;
     for (const auto& d : m_model.devices()) {
-        if (d.ipAddress() == targetIp) { targetDev = &d; break; }
+        if (deviceOwnsIp(d, targetIp)) { targetDev = &d; break; }
     }
     if (!targetDev) {
         result.error = QString("No device owns IP %1.").arg(targetIp);
@@ -332,6 +349,11 @@ Simulator::TraceResult Simulator::traceRoute(const Device& source, const QString
 
         // Direct reach?
         if (deviceCanDirectlyReach(*current, targetIp) && areConnected(current->id(), targetDev->id())) {
+            const int inboundInterface = connectedInterfaceIndex(current->id(), targetDev->id());
+            if (!aclAllowsTraffic(*targetDev, inboundInterface, source.ipAddress(), targetIp)) {
+                result.error = QString("ACL on %1 denied traffic to %2.").arg(targetDev->name(), targetIp);
+                return result;
+            }
             if (!result.hops.isEmpty() && result.hops.last() != current->ipAddress())
                 result.hops.append(current->ipAddress());
             else if (result.hops.isEmpty())
@@ -348,6 +370,11 @@ Simulator::TraceResult Simulator::traceRoute(const Device& source, const QString
         }
         if (!areConnected(current->id(), next->id())) {
             result.error = QString("%1 and %2 are not connected.").arg(current->name(), next->name());
+            return result;
+        }
+        const int inboundInterface = connectedInterfaceIndex(current->id(), next->id());
+        if (!aclAllowsTraffic(*next, inboundInterface, source.ipAddress(), targetIp)) {
+            result.error = QString("ACL on %1 denied traffic to %2.").arg(next->name(), targetIp);
             return result;
         }
         if (visited.contains(next->id())) {
@@ -387,7 +414,7 @@ const Device* Simulator::resolveNextHop(const Device& current, const QString& ta
         }
         if (!bestNextHopIp.isEmpty()) {
             for (const auto& d : m_model.devices()) {
-                if (d.ipAddress() == bestNextHopIp) return &d;
+                if (deviceOwnsIp(d, bestNextHopIp)) return &d;
             }
         }
     }
@@ -395,7 +422,7 @@ const Device* Simulator::resolveNextHop(const Device& current, const QString& ta
     // Fallback: default gateway
     if (!current.defaultGateway().isEmpty()) {
         for (const auto& d : m_model.devices()) {
-            if (d.ipAddress() == current.defaultGateway()) return &d;
+            if (deviceOwnsIp(d, current.defaultGateway())) return &d;
         }
     }
     return nullptr;
@@ -436,6 +463,67 @@ bool Simulator::areConnected(int deviceIdA, int deviceIdB) const {
         }
     }
     return false;
+}
+
+int Simulator::connectedInterfaceIndex(int fromDeviceId, int toDeviceId) const {
+    for (const auto& link : m_model.links()) {
+        if (link.leftDeviceId() == fromDeviceId && link.rightDeviceId() == toDeviceId) {
+            return link.rightInterfaceIndex();
+        }
+        if (link.rightDeviceId() == fromDeviceId && link.leftDeviceId() == toDeviceId) {
+            return link.leftInterfaceIndex();
+        }
+    }
+    return -1;
+}
+
+bool Simulator::aclAllowsTraffic(const Device& destinationDevice, int inboundInterfaceIndex, const QString& sourceIp, const QString& targetIp) const {
+    if (inboundInterfaceIndex < 0) {
+        return true;
+    }
+    const auto* iface = destinationDevice.interfaceAt(inboundInterfaceIndex);
+    if (!iface || iface->inboundAcl().isEmpty()) {
+        return true;
+    }
+    for (const auto& acl : destinationDevice.accessLists()) {
+        if (acl.name.compare(iface->inboundAcl(), Qt::CaseInsensitive) != 0) {
+            continue;
+        }
+        for (const auto& rule : acl.rules) {
+            if (rule.protocol != "ip") {
+                continue;
+            }
+            if (aclAddressMatches(rule.source, sourceIp) && aclAddressMatches(rule.destination, targetIp)) {
+                return rule.action == "permit";
+            }
+        }
+        return false;
+    }
+    return true;
+}
+
+bool Simulator::aclAddressMatches(const QString& spec, const QString& ip) {
+    const QString normalized = spec.trimmed().toLower();
+    if (normalized == "any") {
+        return true;
+    }
+    if (normalized.startsWith("host ")) {
+        return normalized.mid(5).trimmed() == ip.toLower();
+    }
+    const QStringList parts = normalized.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+    if (parts.size() == 2) {
+        bool okNet = false;
+        bool okWild = false;
+        bool okIp = false;
+        const quint32 net = ipv4ToInt(parts[0], &okNet);
+        const quint32 wildcard = ipv4ToInt(parts[1], &okWild);
+        const quint32 target = ipv4ToInt(ip, &okIp);
+        if (okNet && okWild && okIp) {
+            const quint32 mask = ~wildcard;
+            return (target & mask) == (net & mask);
+        }
+    }
+    return normalized == ip.toLower();
 }
 
 quint32 Simulator::ipv4ToInt(const QString& value, bool* ok) {

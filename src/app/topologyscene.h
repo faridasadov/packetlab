@@ -7,6 +7,7 @@
 class QGraphicsLineItem;
 class QGraphicsSceneMouseEvent;
 class QGraphicsSceneContextMenuEvent;
+class QGraphicsSceneDragDropEvent;
 
 namespace packetlab {
 
@@ -24,7 +25,9 @@ signals:
     void deviceMoved(int deviceId, QPointF position);
     void deviceMoveCommitted(int deviceId, QPointF position);
     void cableRequested(int leftDeviceId, int leftInterfaceIndex, int rightDeviceId, int rightInterfaceIndex);
+    void cableMoveRequested(int linkId, bool moveLeftSide, int targetDeviceId, int targetInterfaceIndex);
     void linkSelected(int linkId);
+    void deviceActivated(int deviceId);
     void deviceContextMenuRequested(int deviceId, QPointF screenPos);
     void linkContextMenuRequested(int linkId, QPointF screenPos);
     void canvasContextMenuRequested(QPointF screenPos);
@@ -33,6 +36,7 @@ private:
     void drawBackground(QPainter* painter, const QRectF& rect) override;
     void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
     void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
+    void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
     void addDeviceItem(const Device& device);
@@ -44,6 +48,8 @@ private:
     QGraphicsLineItem* m_temporaryCable;
     int m_dragDeviceId;
     int m_dragInterfaceIndex;
+    int m_dragLinkId;
+    bool m_dragMovingLeftSide;
 };
 
 }  // namespace packetlab

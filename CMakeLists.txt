@@ -19,6 +19,10 @@ endif()
 
 set(PACKETLAB_SOURCES
     src/app/main.cpp
+    src/app/deviceconsoledialog.cpp
+    src/app/deviceconsoledialog.h
+    src/app/consolelineedit.cpp
+    src/app/consolelineedit.h
     src/app/mainwindow.cpp
     src/app/mainwindow.h
     src/app/simulationdialog.cpp

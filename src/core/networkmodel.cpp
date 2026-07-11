@@ -21,8 +21,20 @@ Device& NetworkModel::addDevice(DeviceType type, const QString& baseName) {
     return m_devices.back();
 }
 
+Device& NetworkModel::addDeviceWithId(int id, DeviceType type, const QString& name) {
+    m_devices.emplace_back(id, type, name);
+    m_nextId = std::max(m_nextId, id + 1);
+    return m_devices.back();
+}
+
 Link& NetworkModel::addLink(int leftDeviceId, int leftInterfaceIndex, int rightDeviceId, int rightInterfaceIndex) {
     m_links.emplace_back(m_nextLinkId++, leftDeviceId, leftInterfaceIndex, rightDeviceId, rightInterfaceIndex);
+    return m_links.back();
+}
+
+Link& NetworkModel::addLinkWithId(int id, int leftDeviceId, int leftInterfaceIndex, int rightDeviceId, int rightInterfaceIndex) {
+    m_links.emplace_back(id, leftDeviceId, leftInterfaceIndex, rightDeviceId, rightInterfaceIndex);
+    m_nextLinkId = std::max(m_nextLinkId, id + 1);
     return m_links.back();
 }
 

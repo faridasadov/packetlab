@@ -19,6 +19,7 @@ class QTextEdit;
 class QWidget;
 class QListWidgetItem;
 class QAction;
+class QToolButton;
 
 namespace packetlab {
 
@@ -59,13 +60,18 @@ private slots:
     void handleSceneDeviceMoved(int deviceId, QPointF position);
     void handleSceneDeviceMoveCommitted(int deviceId, QPointF position);
     void handleSceneCableRequested(int leftDeviceId, int leftInterfaceIndex, int rightDeviceId, int rightInterfaceIndex);
+    void handleSceneCableMoveRequested(int linkId, bool moveLeftSide, int targetDeviceId, int targetInterfaceIndex);
     void handleSceneLinkSelected(int linkId);
+    void openDeviceConsole();
+    void openDeviceConsoleForId(int deviceId);
     void showDeviceContextMenu(int deviceId, QPointF screenPos);
     void showLinkContextMenu(int linkId, QPointF screenPos);
     void showCanvasContextMenu(QPointF screenPos);
     void deleteSelection();
     void undo();
     void redo();
+    void applySelectedLabPreset();
+    void syncLabDetails();
 
 private:
     void rebuildDeviceList();
@@ -81,9 +87,14 @@ private:
     void rebuildLinkInterfaceChoices(QComboBox* deviceCombo, QComboBox* interfaceCombo) const;
     void selectDeviceById(int deviceId);
     bool tryCreateLink(int leftDeviceId, int leftInterfaceIndex, int rightDeviceId, int rightInterfaceIndex, bool showMessages);
+    bool tryMoveLinkEndpoint(int linkId, bool moveLeftSide, int targetDeviceId, int targetInterfaceIndex, bool showMessages);
     void pushHistorySnapshot();
     bool restoreSnapshot(const QByteArray& snapshot);
     void refreshActionStates();
+    void populateLabLibrary();
+    void loadLabPreset(const QString& presetId);
+    void syncCliReference();
+    QIcon iconForDeviceType(DeviceType type) const;
 
     NetworkModel m_model;
     Simulator m_simulator;
@@ -92,10 +103,14 @@ private:
     QList<QByteArray> m_undoStack;
     QList<QByteArray> m_redoStack;
     QListWidget*  m_deviceList;
+    QListWidget*  m_labList;
     QGraphicsView* m_topologyView;
     TopologyScene* m_topologyScene;
     QTextEdit*    m_logView;
+    QTextEdit*    m_labDetailsView;
+    QTextEdit*    m_cliReferenceView;
     QLabel*       m_deviceDetails;
+    QLabel*       m_featureCoverageLabel;
     QLabel*       m_deviceSummary;
     QLineEdit*    m_nameEdit;
     QLineEdit*    m_ipEdit;
@@ -117,6 +132,7 @@ private:
     QWidget*      m_routeCard;
     QAction*      m_undoAction;
     QAction*      m_redoAction;
+    QToolButton*  m_applyLabButton;
 };
 
 }  // namespace packetlab
